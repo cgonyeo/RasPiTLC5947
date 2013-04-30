@@ -2,36 +2,52 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <wiringPi.h>
 #include "tlc5947.h"
 
 /*
+ * Basic Use:
+ * Call tlc5947init() before trying to control the chip.
+ * Use setLed, setAllLeds, and clearLeds to change the outputs.
+ * Once you're happy with the values of each output, call updateLeds() to send this information to the chip.
+ * Once you're done, call tlc5947cleanup().
+ *
+ * To use more than one TLC5947, modify NUM_TLCS in the header file and recompile.
+ *
  * Pin Mapping:
  * 
  * 0 -> SIN
- * 1 -> SCLK
+ * 4 -> SCLK
  * 2 -> XLAT
  * 3 -> BLANK
+ *
+ * Note: The above follows WiringPi's numbering convention, just google it or something.
  */
 
 #define SIN 0
-#define SCLK 1
+#define SCLK 4
 #define XLAT 2
 #define BLANK 3
 
-int tlcleds[NUM_TLCS * 24];
+#define DELAY 0
 
+int tlcleds[NUM_TLCS * 24];
+int xlat_needed = 0;
+int tlcDone = 0;
+
+//ledIndex >= 0 && ledIndex < NUM_TLCS * 24
+//value >= 0 && value < 4096
 void setLed(int ledIndex, int value)
 {
-	if(ledIndex >= 0 && ledIndex < NUM_TLCS * 16 && value >= 0 && value < 4096)
+	if(ledIndex >= 0 && ledIndex < NUM_TLCS * 24 && value >= 0 && value < 4096)
 		tlcleds[ledIndex] = value;
 }
 
+//value >= 0 && value < 4096
 void setAllLeds(int value)
 {
 	if(value >= 0 && value < 4096)
-		for(int i = 0; i < NUM_TLCS * 16; i++)
+		for(int i = 0; i < NUM_TLCS * 24; i++)
 			tlcleds[i] = value;
 }
 
@@ -40,9 +56,10 @@ void clearLeds()
 	setAllLeds(0);
 }
 
+//index >= 0 && index < NUM_TLCS * 24
 int getLedValue(int index)
 {
-	if(index >= 0 && index < NUM_TLCS * 16)
+	if(index >= 0 && index < NUM_TLCS * 24)
 		return index;
 	return -1;
 }
@@ -53,7 +70,7 @@ void pulsePin(int pin)
 	digitalWrite(pin, 0);
 }
 
-void tlc5940init()
+void tlc5947init()
 {
 	if(wiringPiSetup() == -1)
 		printf("Wiring setup failed!\n");
@@ -66,16 +83,17 @@ void tlc5940init()
 	pinMode(BLANK, OUTPUT);
 }
 
-void tlc5940cleanup()
+void tlc5947cleanup()
 {
-	for(int i =0; i < NUM_TLCS * 24; i++)
-		free(tlcleds[i]);
+	setAllLeds(0);
+	updateLeds();
+
+	tlcDone = 1;
 }
 
 void updateLeds()
 {
-	printf("Updating LEDs\n");
-	for(int i = NUM_TLCS * 16 - 1; i >= 0; i--)
+	for(int i = NUM_TLCS * 24 - 1; i >= 0; i--)
 	{
 		digitalWrite(SIN, tlcleds[i] & 2048);
 		pulsePin(SCLK);
@@ -102,28 +120,8 @@ void updateLeds()
 		digitalWrite(SIN, tlcleds[i] & 1);
 		pulsePin(SCLK);
 	}
-	
+
 	digitalWrite(BLANK, 1);
 	pulsePin(XLAT);
 	digitalWrite(BLANK, 0);
 }
-
-//Example usage:
-/* 
- * int main(void)
- * {
- * 	printf("Started\n");
- * 	printf("Num Tlcs: %i\n", NUM_TLCS);
- * 
- * 	tlc5940init();
- * 
- * 	for(int i = 0; i < 4096; i+= 1)
- * 	{
- * 		setAllLeds(i);
- * 		updateLeds();
- * 		usleep(1000);
- * 	}
- * 	setAllLeds(0);
- * 	updateLeds();
- * }
- */
